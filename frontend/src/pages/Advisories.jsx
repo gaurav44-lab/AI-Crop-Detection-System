@@ -65,7 +65,7 @@ export default function Advisories() {
       ) : (
         <div className="flex flex-col gap-4">
           {advisories.map(advisory => (
-            <Link key={advisory._id} to={`/advisories/${advisory._id}`}
+            <Link key={advisory.id} to={`/advisories/${advisory.id}`}
               className={`block rounded-2xl p-5 border transition-all duration-200 hover:-translate-y-0.5 group ${
                 !advisory.isRead
                   ? 'bg-forest-900/40 border-forest-700/50 hover:border-forest-600/70'

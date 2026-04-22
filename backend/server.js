@@ -5,7 +5,6 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
-const connectDB = require('./config/db');
 
 // Route imports
 const authRoutes = require('./routes/auth');
@@ -14,9 +13,6 @@ const advisoryRoutes = require('./routes/advisory');
 const dashboardRoutes = require('./routes/dashboard');
 
 const app = express();
-
-// Connect Database
-connectDB();
 
 // Security Middleware
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));

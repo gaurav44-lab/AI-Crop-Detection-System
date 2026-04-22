@@ -1,7 +1,12 @@
-const Report = require('../models/Report');
-const Advisory = require('../models/Advisory');
+const { admin, db, storage } = require('../config/firebase');
 const aiService = require('../config/aiService');
-const path = require('path');
+const { v4: uuidv4 } = require('uuid');
+
+// Helper to get user details
+const getUserDetails = async (userId) => {
+  const userDoc = await db.collection('users').doc(userId).get();
+  return userDoc.exists ? { id: userId, name: userDoc.data().name, email: userDoc.data().email, farmDetails: userDoc.data().farmDetails } : { id: userId, name: 'Unknown' };
+};
 
 // @desc    Create new report
 // @route   POST /api/reports
@@ -12,50 +17,65 @@ exports.createReport = async (req, res, next) => {
       location, affectedArea, weatherConditions, isPublic
     } = req.body;
 
-    // Process uploaded images
-    const images = req.files ? req.files.map(file => ({
-      filename: file.filename,
-      originalName: file.originalname,
-      path: `/uploads/${req.user.id}/${file.filename}`,
-      mimetype: file.mimetype,
-      size: file.size
-    })) : [];
+    const uploadedImages = [];
+    
+    if (req.files && req.files.length > 0) {
+      for (const file of req.files) {
+        // Construct the relative path that will be served by express.static
+        const publicUrl = `/uploads/${req.user.id}/${file.filename}`;
+        
+        uploadedImages.push({
+          filename: file.filename,
+          originalName: file.originalname,
+          path: publicUrl,
+          mimetype: file.mimetype,
+          size: file.size,
+          uploadedAt: new Date().toISOString()
+        });
+      }
+    }
 
-    const report = await Report.create({
+    const reportRef = db.collection('reports').doc();
+    const reportData = {
       user: req.user.id,
       cropType,
-      cropStage,
+      cropStage: cropStage || 'vegetative',
       symptoms,
-      severity,
+      severity: severity || 'medium',
       location: location ? JSON.parse(location) : {},
       affectedArea: affectedArea ? JSON.parse(affectedArea) : {},
       weatherConditions: weatherConditions ? JSON.parse(weatherConditions) : {},
-      images,
-      isPublic: isPublic === 'true'
-    });
+      images: uploadedImages,
+      isPublic: isPublic === 'true',
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    await reportRef.set(reportData);
 
     // Trigger async AI analysis
-    analyzeReportAsync(report._id);
+    analyzeReportAsync(reportRef.id);
 
     res.status(201).json({
       success: true,
       message: 'Report submitted. AI analysis in progress...',
-      report
+      report: { id: reportRef.id, ...reportData }
     });
   } catch (err) {
     next(err);
   }
 };
 
-// Async AI analysis (runs in background)
 async function analyzeReportAsync(reportId) {
   try {
-    const report = await Report.findById(reportId);
-    if (!report) return;
+    const reportRef = db.collection('reports').doc(reportId);
+    const doc = await reportRef.get();
+    if (!doc.exists) return;
+    
+    const report = doc.data();
+    await reportRef.update({ status: 'analyzing', updatedAt: new Date().toISOString() });
 
-    await Report.findByIdAndUpdate(reportId, { status: 'analyzing' });
-
-    // Call AI service
     const analysis = await aiService.analyzeDisease({
       cropType: report.cropType,
       symptoms: report.symptoms,
@@ -63,34 +83,41 @@ async function analyzeReportAsync(reportId) {
       images: report.images
     });
 
-    await Report.findByIdAndUpdate(reportId, {
+    const aiAnalysisResult = {
+      ...analysis,
+      analyzedAt: new Date().toISOString()
+    };
+
+    await reportRef.update({
       status: 'analyzed',
-      aiAnalysis: {
-        ...analysis,
-        analyzedAt: new Date()
-      }
+      aiAnalysis: aiAnalysisResult,
+      updatedAt: new Date().toISOString()
     });
 
-    // Auto-generate advisory
     if (analysis.detectedDisease) {
       await generateAdvisoryForReport(reportId, report.user, analysis);
     }
   } catch (err) {
     console.error('AI Analysis failed:', err.message);
-    await Report.findByIdAndUpdate(reportId, { status: 'pending' });
+    await db.collection('reports').doc(reportId).update({ status: 'pending', updatedAt: new Date().toISOString() });
   }
 }
 
 async function generateAdvisoryForReport(reportId, userId, analysis) {
   try {
     const advisory = await aiService.generateAdvisory(analysis);
-    await Advisory.create({
+    const advisoryData = {
       report: reportId,
       user: userId,
       ...advisory,
-      generatedBy: 'ai'
-    });
-    await Report.findByIdAndUpdate(reportId, { status: 'advisory_sent' });
+      generatedBy: 'ai',
+      isRead: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    
+    await db.collection('advisories').add(advisoryData);
+    await db.collection('reports').doc(reportId).update({ status: 'advisory_sent', updatedAt: new Date().toISOString() });
   } catch (err) {
     console.error('Advisory generation failed:', err.message);
   }
@@ -101,17 +128,20 @@ async function generateAdvisoryForReport(reportId, userId, analysis) {
 exports.getReports = async (req, res, next) => {
   try {
     const { page = 1, limit = 10, status, cropType, severity } = req.query;
-    const query = { user: req.user.id };
-
-    if (status) query.status = status;
-    if (cropType) query.cropType = cropType;
-    if (severity) query.severity = severity;
-
+    
+    let reportsQuery = db.collection('reports').where('user', '==', req.user.id);
+    if (status) reportsQuery = reportsQuery.where('status', '==', status);
+    if (cropType) reportsQuery = reportsQuery.where('cropType', '==', cropType);
+    if (severity) reportsQuery = reportsQuery.where('severity', '==', severity);
+    
+    const snapshot = await reportsQuery.get();
+    let reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    reports.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    
+    const total = reports.length;
     const skip = (page - 1) * limit;
-    const [reports, total] = await Promise.all([
-      Report.find(query).sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)),
-      Report.countDocuments(query)
-    ]);
+    reports = reports.slice(skip, skip + parseInt(limit));
 
     res.json({
       success: true,
@@ -132,17 +162,21 @@ exports.getReports = async (req, res, next) => {
 // @route   GET /api/reports/:id
 exports.getReport = async (req, res, next) => {
   try {
-    const report = await Report.findOne({
-      _id: req.params.id,
-      $or: [{ user: req.user.id }, { isPublic: true }]
-    }).populate('user', 'name email');
-
-    if (!report) {
+    const reportDoc = await db.collection('reports').doc(req.params.id).get();
+    if (!reportDoc.exists) {
       return res.status(404).json({ error: 'Report not found.' });
     }
+    
+    let report = reportDoc.data();
+    if (report.user !== req.user.id && !report.isPublic) {
+      return res.status(404).json({ error: 'Report not found.' });
+    }
+    
+    report.user = await getUserDetails(report.user);
+    report.id = reportDoc.id;
 
-    // Fetch advisory if exists
-    const advisory = await Advisory.findOne({ report: report._id });
+    const advisoriesSnapshot = await db.collection('advisories').where('report', '==', reportDoc.id).limit(1).get();
+    const advisory = advisoriesSnapshot.empty ? null : { id: advisoriesSnapshot.docs[0].id, ...advisoriesSnapshot.docs[0].data() };
 
     res.json({ success: true, report, advisory });
   } catch (err) {
@@ -154,17 +188,17 @@ exports.getReport = async (req, res, next) => {
 // @route   PUT /api/reports/:id
 exports.updateReport = async (req, res, next) => {
   try {
-    const report = await Report.findOneAndUpdate(
-      { _id: req.params.id, user: req.user.id },
-      req.body,
-      { new: true, runValidators: true }
-    );
-
-    if (!report) {
-      return res.status(404).json({ error: 'Report not found.' });
+    const reportRef = db.collection('reports').doc(req.params.id);
+    const doc = await reportRef.get();
+    if (!doc.exists || doc.data().user !== req.user.id) {
+       return res.status(404).json({ error: 'Report not found.' });
     }
-
-    res.json({ success: true, report });
+    
+    const updates = { ...req.body, updatedAt: new Date().toISOString() };
+    await reportRef.update(updates);
+    
+    const updatedDoc = await reportRef.get();
+    res.json({ success: true, report: { id: updatedDoc.id, ...updatedDoc.data() } });
   } catch (err) {
     next(err);
   }
@@ -174,11 +208,20 @@ exports.updateReport = async (req, res, next) => {
 // @route   DELETE /api/reports/:id
 exports.deleteReport = async (req, res, next) => {
   try {
-    const report = await Report.findOneAndDelete({ _id: req.params.id, user: req.user.id });
-    if (!report) {
-      return res.status(404).json({ error: 'Report not found.' });
+    const reportRef = db.collection('reports').doc(req.params.id);
+    const doc = await reportRef.get();
+    if (!doc.exists || doc.data().user !== req.user.id) {
+       return res.status(404).json({ error: 'Report not found.' });
     }
-    await Advisory.deleteMany({ report: report._id });
+    
+    await reportRef.delete();
+    
+    // Delete attached advisories
+    const advisoriesQuery = await db.collection('advisories').where('report', '==', req.params.id).get();
+    const batch = db.batch();
+    advisoriesQuery.forEach(advisoryDoc => batch.delete(advisoryDoc.ref));
+    await batch.commit();
+
     res.json({ success: true, message: 'Report deleted successfully.' });
   } catch (err) {
     next(err);
@@ -190,15 +233,25 @@ exports.deleteReport = async (req, res, next) => {
 exports.getCommunityReports = async (req, res, next) => {
   try {
     const { page = 1, limit = 10, cropType } = req.query;
-    const query = { isPublic: true, status: 'advisory_sent' };
-    if (cropType) query.cropType = cropType;
-
-    const reports = await Report.find(query)
-      .populate('user', 'name farmDetails.location')
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(parseInt(limit));
-
+    
+    let query = db.collection('reports').where('isPublic', '==', true).where('status', '==', 'advisory_sent');
+    if (cropType) query = query.where('cropType', '==', cropType);
+    
+    const snapshot = await query.get();
+    let reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    // Sort
+    reports.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    
+    // Paginate manually
+    const skip = (page - 1) * limit;
+    reports = reports.slice(skip, skip + parseInt(limit));
+    
+    // Populate users manually
+    for (const r of reports) {
+      r.user = await getUserDetails(r.user);
+    }
+    
     res.json({ success: true, reports });
   } catch (err) {
     next(err);

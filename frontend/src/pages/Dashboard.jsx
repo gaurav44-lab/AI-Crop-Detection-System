@@ -38,7 +38,7 @@ export default function Dashboard() {
   ];
 
   const barData = {
-    labels: data?.monthlyActivity?.map(m => m._id) ?? [],
+    labels: data?.monthlyActivity?.map(m => m.id) ?? [],
     datasets: [{
       label: 'Reports',
       data: data?.monthlyActivity?.map(m => m.count) ?? [],
@@ -50,7 +50,7 @@ export default function Dashboard() {
   };
 
   const doughnutData = {
-    labels: data?.cropBreakdown?.map(c => c._id) ?? [],
+    labels: data?.cropBreakdown?.map(c => c.id) ?? [],
     datasets: [{
       data: data?.cropBreakdown?.map(c => c.count) ?? [],
       backgroundColor: ['#166534','#15803d','#16a34a','#22c55e','#4ade80','#86efac'],
@@ -146,7 +146,7 @@ export default function Dashboard() {
         ) : (
           <div className="flex flex-col gap-3">
             {data?.recentReports?.map(report => (
-              <Link key={report._id} to={`/reports/${report._id}`}
+              <Link key={report.id} to={`/reports/${report.id}`}
                 className="flex items-center justify-between p-4 bg-forest-900/30 rounded-xl hover:bg-forest-900/60 transition-all duration-200 border border-transparent hover:border-forest-700/50 group">
                 <div className="flex items-center gap-3">
                   <span className="text-xl">{STATUS_ICONS[report.status]}</span>

@@ -204,7 +204,7 @@ export default function ReportDetail() {
 
           {/* View Advisory CTA */}
           {advisory && (
-            <Link to={`/advisories/${advisory._id}`}
+            <Link to={`/advisories/${advisory.id}`}
               className="block bg-gradient-to-r from-earth-800/50 to-earth-900/50 border border-earth-700/50 rounded-2xl p-5 hover:border-earth-600/60 transition-all duration-200 group">
               <div className="flex items-center justify-between">
                 <div>

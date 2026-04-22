@@ -60,7 +60,7 @@ export default function NewReport() {
 
       const data = await reportsAPI.create(formData);
       toast.success('Report submitted! AI analysis starting...');
-      navigate(`/reports/${data.report._id}`);
+      navigate(`/reports/${data.report.id}`);
     } catch (err) {
       toast.error(err.message);
     } finally {

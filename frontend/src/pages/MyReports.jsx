@@ -87,7 +87,7 @@ export default function MyReports() {
           {reports.map(report => {
             const s = STATUS_STYLES[report.status] || STATUS_STYLES.pending;
             return (
-              <Link key={report._id} to={`/reports/${report._id}`}
+              <Link key={report.id} to={`/reports/${report.id}`}
                 className="block bg-forest-950/50 border border-forest-800/30 rounded-2xl p-5 hover:border-forest-700/60 transition-all duration-200 hover:-translate-y-0.5 group">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start gap-4 flex-1">

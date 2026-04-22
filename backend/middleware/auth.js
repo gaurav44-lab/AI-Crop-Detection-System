@@ -1,5 +1,4 @@
-const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const { admin, db } = require('../config/firebase');
 
 const protect = async (req, res, next) => {
   try {
@@ -13,23 +12,45 @@ const protect = async (req, res, next) => {
       return res.status(401).json({ error: 'Access denied. No token provided.' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.id).select('-password');
-
-    if (!user || !user.isActive) {
-      return res.status(401).json({ error: 'Token is no longer valid.' });
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    
+    // Fetch user from Firestore
+    const userDoc = await db.collection('users').doc(decodedToken.uid).get();
+    
+    if (!userDoc.exists) {
+      // Auto-create user if they don't exist yet but have a valid token
+      // This helps with first-time logins via Google Auth
+      const newUser = {
+        name: decodedToken.name || decodedToken.email.split('@')[0],
+        email: decodedToken.email,
+        role: 'farmer',
+        farmDetails: { location: '', farmSize: 0, primaryCrops: [] },
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        lastLogin: new Date().toISOString()
+      };
+      await db.collection('users').doc(decodedToken.uid).set(newUser);
+      
+      req.user = { id: decodedToken.uid, ...newUser };
+    } else {
+      const userData = userDoc.data();
+      if (!userData.isActive) {
+        return res.status(401).json({ error: 'Account is deactivated.' });
+      }
+      // Update last login
+      await db.collection('users').doc(decodedToken.uid).update({ 
+        lastLogin: new Date().toISOString() 
+      });
+      
+      req.user = { id: decodedToken.uid, ...userData };
     }
 
-    req.user = user;
     next();
   } catch (err) {
-    if (err.name === 'JsonWebTokenError') {
-      return res.status(401).json({ error: 'Invalid token.' });
-    }
-    if (err.name === 'TokenExpiredError') {
+    if (err.code === 'auth/id-token-expired') {
       return res.status(401).json({ error: 'Token has expired.' });
     }
-    next(err);
+    return res.status(401).json({ error: 'Invalid token.', details: err.message });
   }
 };
 
@@ -44,10 +65,4 @@ const authorize = (...roles) => {
   };
 };
 
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN || '7d'
-  });
-};
-
-module.exports = { protect, authorize, generateToken };
+module.exports = { protect, authorize };

@@ -49,7 +49,7 @@ export default function Community() {
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {reports.map(report => (
-            <div key={report._id} className="bg-forest-950/50 border border-forest-800/30 rounded-2xl p-5 hover:border-forest-700/50 transition-all duration-200">
+            <div key={report.id} className="bg-forest-950/50 border border-forest-800/30 rounded-2xl p-5 hover:border-forest-700/50 transition-all duration-200">
               <div className="flex items-start gap-3 mb-3">
                 <span className="text-3xl">{CROP_EMOJIS[report.cropType] || '🌿'}</span>
                 <div>
