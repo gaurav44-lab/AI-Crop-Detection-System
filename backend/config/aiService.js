@@ -11,7 +11,7 @@ class AIService {
   async analyzeDisease({ cropType, symptoms, severity, images }) {
     try {
       // Create Gemini Flash Model Instance
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
       const promptText = `
         You are an expert agronomist AI. Analyze the following crop report.
@@ -43,7 +43,8 @@ class AIService {
       if (images && images.length > 0) {
         for (const img of images) {
           // img.path is roughly /uploads/user_id/filename.ext
-          const absolutePath = path.join(__dirname, '..', img.path);
+          const relativeImagePath = img.path.replace(/^\//, '');
+          const absolutePath = path.join(__dirname, '..', relativeImagePath);
           if (fs.existsSync(absolutePath)) {
             parts.push({
               inlineData: {
@@ -83,7 +84,7 @@ class AIService {
 
   async generateAdvisory(analysis) {
     try {
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
       const promptText = `
         You are an expert agronomist AI. Based on the following disease analysis, generate a detailed advisory plan.
