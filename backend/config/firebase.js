@@ -1,5 +1,12 @@
 const admin = require('firebase-admin');
-const serviceAccount = require('./serviceAccountKey.json');
+let serviceAccount;
+try {
+  // Local development path
+  serviceAccount = require('./serviceAccountKey.json');
+} catch (error) {
+  // Render Secret File path (places the file in the root of the backend folder)
+  serviceAccount = require('../serviceAccountKey.json');
+}
 
 // Using the storage bucket provided in frontend config
 admin.initializeApp({
