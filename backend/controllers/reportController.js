@@ -21,11 +21,11 @@ exports.createReport = async (req, res, next) => {
     
     if (req.files && req.files.length > 0) {
       for (const file of req.files) {
-        // Construct the relative path that will be served by express.static
-        const publicUrl = `/uploads/${req.user.id}/${file.filename}`;
+        // file.path contains the secure Cloudinary URL automatically
+        const publicUrl = file.path;
         
         uploadedImages.push({
-          filename: file.filename,
+          filename: file.filename, // This is the Cloudinary public_id
           originalName: file.originalname,
           path: publicUrl,
           mimetype: file.mimetype,

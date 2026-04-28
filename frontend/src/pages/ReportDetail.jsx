@@ -1,14 +1,11 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import { reportsAPI } from '../utils/api';
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { reportsAPI, advisoryAPI } from '../utils/api';
 import toast from 'react-hot-toast';
-
-const URGENCY_STYLES = {
-  monitor: { color: '#4ade80', label: 'Monitor Closely' },
-  treat_soon: { color: '#fbbf24', label: 'Treat Soon' },
-  treat_immediately: { color: '#ef4444', label: '⚠️ Treat Immediately' },
-  consult_expert: { color: '#f97316', label: 'Consult Expert' },
-};
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '../components/ui/card';
+import { Badge } from '../components/ui/badge';
+import { Button } from '../components/ui/button';
+import { ArrowLeft, Loader2, Trash2, CheckCircle2, AlertTriangle, Info, Sprout, Beaker } from 'lucide-react';
 
 export default function ReportDetail() {
   const { id } = useParams();
@@ -16,206 +13,220 @@ export default function ReportDetail() {
   const [report, setReport] = useState(null);
   const [advisory, setAdvisory] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [deleting, setDeleting] = useState(false);
-  const [selectedImg, setSelectedImg] = useState(0);
 
   useEffect(() => {
-    reportsAPI.getOne(id)
-      .then(data => { setReport(data.report); setAdvisory(data.advisory); })
-      .catch(() => toast.error('Report not found'))
-      .finally(() => setLoading(false));
-  }, [id]);
+    let pollInterval;
 
-  // Auto-refresh if analyzing
-  useEffect(() => {
-    if (report?.status === 'analyzing' || report?.status === 'pending') {
-      const timer = setInterval(async () => {
-        try {
-          const data = await reportsAPI.getOne(id);
-          setReport(data.report);
-          setAdvisory(data.advisory);
-          if (data.report.status !== 'analyzing' && data.report.status !== 'pending') {
-            clearInterval(timer);
-            toast.success('Analysis complete!');
-          }
-        } catch {}
-      }, 5000);
-      return () => clearInterval(timer);
-    }
-  }, [report?.status, id]);
+    const loadData = async () => {
+      try {
+        const data = await reportsAPI.getOne(id);
+        setReport(data.report);
+        setAdvisory(data.advisory);
+        
+        // Start polling if analyzing
+        if (data.report.status === 'analyzing' || data.report.status === 'pending') {
+          if (!pollInterval) pollInterval = setInterval(loadData, 5000);
+        } else if (pollInterval) {
+          clearInterval(pollInterval);
+          toast.success('Analysis complete!');
+        }
+      } catch (err) {
+        toast.error(err.message);
+        navigate('/reports');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+    return () => clearInterval(pollInterval);
+  }, [id, navigate]);
 
   const handleDelete = async () => {
-    if (!window.confirm('Delete this report? This cannot be undone.')) return;
-    setDeleting(true);
+    if (!window.confirm('Delete this report?')) return;
     try {
       await reportsAPI.delete(id);
       toast.success('Report deleted');
       navigate('/reports');
     } catch (err) {
       toast.error(err.message);
-    } finally {
-      setDeleting(false);
     }
   };
 
-  if (loading) return (
-    <div className="flex items-center justify-center h-64">
-      <div className="w-8 h-8 border-4 border-forest-400 border-t-transparent rounded-full animate-spin" />
-    </div>
-  );
-  if (!report) return <div className="text-forest-400 text-center py-16">Report not found.</div>;
+  const handleResolve = async () => {
+    try {
+      await advisoryAPI.resolve(advisory.id);
+      toast.success('Marked as resolved!');
+      setReport(prev => ({ ...prev, status: 'resolved' }));
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
 
-  const urgency = report.aiAnalysis?.urgency;
-  const urgencyStyle = urgency ? URGENCY_STYLES[urgency] : null;
+  if (loading) return <div className="py-20 flex justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  if (!report) return null;
+
+  const isAnalyzing = report.status === 'analyzing' || report.status === 'pending';
 
   return (
-    <div className="animate-slide-up max-w-4xl">
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500&display=swap');`}</style>
-
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate(-1)} className="text-forest-400 hover:text-white transition-colors">← Back</button>
-          <span className="text-forest-700">/</span>
-          <h1 className="font-display font-bold text-white text-2xl capitalize">{report.cropType} Report</h1>
-        </div>
-        <button onClick={handleDelete} disabled={deleting}
-          className="text-red-400 hover:text-red-300 border border-red-800/50 hover:bg-red-900/20 px-4 py-2 rounded-xl transition-all duration-200 text-sm disabled:opacity-40">
-          {deleting ? 'Deleting...' : 'Delete'}
-        </button>
+    <div className="flex flex-col gap-6 w-full max-w-5xl animate-in fade-in slide-in-from-bottom-4 duration-500">
+      
+      {/* Header Actions */}
+      <div className="flex items-center justify-between">
+        <Button variant="ghost" onClick={() => navigate('/reports')} className="gap-2 -ml-2 text-muted-foreground">
+          <ArrowLeft className="h-4 w-4" /> Back to Reports
+        </Button>
+        <Button variant="destructive" size="sm" onClick={handleDelete} className="gap-2">
+          <Trash2 className="h-4 w-4" /> Delete
+        </Button>
       </div>
 
-      <div className="grid lg:grid-cols-5 gap-6">
-        {/* Left column */}
-        <div className="lg:col-span-2 flex flex-col gap-4">
-          {/* Images */}
-          {report.images?.length > 0 && (
-            <div className="bg-forest-950/50 border border-forest-800/50 rounded-2xl overflow-hidden">
-              <img src={`http://localhost:5000${report.images[selectedImg]?.path}`} alt="Crop"
-                className="w-full aspect-square object-cover" />
-              {report.images.length > 1 && (
-                <div className="flex gap-2 p-3">
-                  {report.images.map((img, i) => (
-                    <button key={i} onClick={() => setSelectedImg(i)}
-                      className={`flex-1 aspect-square rounded-lg overflow-hidden border-2 transition-colors ${i === selectedImg ? 'border-forest-400' : 'border-transparent'}`}>
-                      <img src={`http://localhost:5000${img.path}`} alt="" className="w-full h-full object-cover" />
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+      {/* Main Grid */}
+      <div className="grid lg:grid-cols-3 gap-6">
+        
+        {/* Left Col: Details & Images */}
+        <div className="lg:col-span-1 space-y-6">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle>Report Details</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 text-sm">
+              <div className="flex justify-between py-1 border-b">
+                <span className="text-muted-foreground">Crop</span>
+                <span className="font-medium capitalize">{report.cropType}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b">
+                <span className="text-muted-foreground">Severity</span>
+                <Badge variant="outline" className="capitalize">{report.severity}</Badge>
+              </div>
+              <div className="flex justify-between py-1 border-b">
+                <span className="text-muted-foreground">Status</span>
+                <Badge variant={report.status === 'analyzed' ? 'default' : 'secondary'} className="capitalize">{report.status.replace('_',' ')}</Badge>
+              </div>
+              <div className="flex justify-between py-1 border-b">
+                <span className="text-muted-foreground">Date</span>
+                <span className="font-medium">{new Date(report.createdAt).toLocaleDateString()}</span>
+              </div>
+            </CardContent>
+          </Card>
 
-          {/* Report Info */}
-          <div className="bg-forest-950/50 border border-forest-800/50 rounded-2xl p-5">
-            <h3 className="font-display font-bold text-white mb-4">Report Details</h3>
-            {[
-              ['Crop Type', report.cropType, 'capitalize'],
-              ['Crop Stage', report.cropStage, 'capitalize'],
-              ['Severity', report.severity, 'capitalize'],
-              ['Location', report.location?.address || 'Not specified', ''],
-              ['Affected Area', report.affectedArea?.value ? `${report.affectedArea.value} ${report.affectedArea.unit}` : 'Not specified', ''],
-              ['Submitted', new Date(report.createdAt).toLocaleString(), ''],
-            ].map(([label, val, cls]) => (
-              <div key={label} className="flex justify-between py-2 border-b border-forest-800/30 last:border-0">
-                <span className="text-forest-400 text-sm">{label}</span>
-                <span className={`text-forest-200 text-sm font-medium ${cls}`}>{val}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Right column */}
-        <div className="lg:col-span-3 flex flex-col gap-4">
-          {/* Status Banner */}
-          {(report.status === 'analyzing' || report.status === 'pending') ? (
-            <div className="bg-blue-900/20 border border-blue-700/30 rounded-2xl p-5 flex items-center gap-4">
-              <div className="w-8 h-8 border-3 border-blue-400 border-t-transparent rounded-full animate-spin flex-shrink-0" style={{borderWidth: '3px'}} />
-              <div>
-                <p className="text-blue-200 font-semibold">AI Analysis in Progress</p>
-                <p className="text-blue-400 text-sm">This usually takes 1-2 minutes. This page will update automatically.</p>
-              </div>
-            </div>
-          ) : report.aiAnalysis?.detectedDisease ? (
-            <div className="bg-forest-900/30 border border-forest-600/30 rounded-2xl p-5">
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <p className="text-forest-400 text-xs uppercase tracking-wide mb-1">AI Diagnosis</p>
-                  <h2 className="font-display font-bold text-white text-2xl">{report.aiAnalysis.detectedDisease}</h2>
-                </div>
-                <div className="text-right">
-                  <div className="text-3xl font-display font-bold text-forest-300">{report.aiAnalysis.confidence}%</div>
-                  <div className="text-forest-500 text-xs">confidence</div>
-                </div>
-              </div>
-              <div className="w-full bg-forest-900 rounded-full h-2 mb-4">
-                <div className="bg-gradient-to-r from-forest-600 to-forest-400 h-2 rounded-full"
-                  style={{ width: `${report.aiAnalysis.confidence}%` }} />
-              </div>
-              {urgencyStyle && (
-                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium"
-                  style={{ backgroundColor: urgencyStyle.color + '15', color: urgencyStyle.color, border: `1px solid ${urgencyStyle.color}40` }}>
-                  {urgencyStyle.label}
-                </div>
-              )}
-            </div>
-          ) : null}
-
-          {/* Possible Diseases */}
-          {report.aiAnalysis?.possibleDiseases?.length > 0 && (
-            <div className="bg-forest-950/50 border border-forest-800/50 rounded-2xl p-5">
-              <h3 className="font-display font-bold text-white mb-3">Possible Diseases</h3>
-              <div className="flex flex-col gap-2">
-                {report.aiAnalysis.possibleDiseases.map((d, i) => (
-                  <div key={i} className="flex items-center justify-between">
-                    <span className="text-forest-300 text-sm">{d.name}</span>
-                    <div className="flex items-center gap-2">
-                      <div className="w-24 bg-forest-900 rounded-full h-1.5">
-                        <div className="bg-forest-500 h-1.5 rounded-full" style={{ width: `${d.confidence}%` }} />
-                      </div>
-                      <span className="text-forest-400 text-xs w-8 text-right">{d.confidence}%</span>
-                    </div>
+          {report.images && report.images.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3"><CardTitle>Images</CardTitle></CardHeader>
+              <CardContent className="grid grid-cols-2 gap-2">
+                {report.images.map((img, i) => (
+                  <div key={i} className="aspect-square rounded-md overflow-hidden border">
+                    <img src={img.path || img} alt="Crop" className="w-full h-full object-cover" />
                   </div>
                 ))}
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           )}
+        </div>
 
-          {/* Symptoms */}
-          <div className="bg-forest-950/50 border border-forest-800/50 rounded-2xl p-5">
-            <h3 className="font-display font-bold text-white mb-3">Reported Symptoms</h3>
-            <p className="text-forest-300 text-sm leading-relaxed">{report.symptoms}</p>
-          </div>
-
-          {/* AI Recommendations */}
-          {report.aiAnalysis?.recommendations?.length > 0 && (
-            <div className="bg-forest-950/50 border border-forest-800/50 rounded-2xl p-5">
-              <h3 className="font-display font-bold text-white mb-3">Quick Recommendations</h3>
-              <ul className="flex flex-col gap-2">
-                {report.aiAnalysis.recommendations.map((rec, i) => (
-                  <li key={i} className="flex items-start gap-2 text-forest-300 text-sm">
-                    <span className="text-forest-500 flex-shrink-0 mt-0.5">◉</span>
-                    {rec}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* View Advisory CTA */}
-          {advisory && (
-            <Link to={`/advisories/${advisory.id}`}
-              className="block bg-gradient-to-r from-earth-800/50 to-earth-900/50 border border-earth-700/50 rounded-2xl p-5 hover:border-earth-600/60 transition-all duration-200 group">
-              <div className="flex items-center justify-between">
+        {/* Right Col: AI & Advisory */}
+        <div className="lg:col-span-2 space-y-6">
+          
+          {isAnalyzing && (
+            <Card className="border-blue-500/50 bg-blue-500/10">
+              <CardContent className="p-6 flex items-center gap-4">
+                <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
                 <div>
-                  <p className="text-earth-300 text-xs uppercase tracking-wide mb-1">Full Advisory Available</p>
-                  <h3 className="font-display font-bold text-white">View Treatment Plan →</h3>
-                  <p className="text-earth-400 text-sm mt-1">Detailed recommendations, treatment options & management strategies</p>
+                  <h3 className="font-semibold text-blue-500">AI Analysis in Progress</h3>
+                  <p className="text-sm text-blue-500/80">Our models are processing your report. This usually takes 1-2 minutes.</p>
                 </div>
-                <span className="text-3xl group-hover:scale-110 transition-transform">📋</span>
-              </div>
-            </Link>
+              </CardContent>
+            </Card>
           )}
+
+          {report.aiAnalysis?.detectedDisease && (
+            <Card className="border-primary/50 bg-primary/5">
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-primary mb-1">AI Diagnosis</p>
+                    <h2 className="text-2xl font-bold">{report.aiAnalysis.detectedDisease}</h2>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-3xl font-bold text-primary">{report.aiAnalysis.confidence}%</div>
+                    <div className="text-xs text-muted-foreground">confidence</div>
+                  </div>
+                </div>
+                <div className="h-2 w-full rounded-full bg-secondary overflow-hidden">
+                  <div className="h-full bg-primary" style={{ width: `${report.aiAnalysis.confidence}%` }}></div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          <Card>
+            <CardHeader className="pb-3"><CardTitle>Reported Symptoms</CardTitle></CardHeader>
+            <CardContent>
+              <p className="text-sm leading-relaxed">{report.symptoms}</p>
+            </CardContent>
+          </Card>
+
+          {advisory && (
+            <div className="space-y-4">
+              <h2 className="text-xl font-bold mt-8 mb-4 flex items-center gap-2"><CheckCircle2 className="h-5 w-5 text-primary"/> Treatment Plan</h2>
+              
+              {advisory.treatment?.immediate?.length > 0 && (
+                <Card className="border-destructive/30 bg-destructive/5">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-destructive flex items-center gap-2 text-base"><AlertTriangle className="h-4 w-4"/> Immediate Actions</CardTitle>
+                  </CardHeader>
+                  <CardContent className="grid sm:grid-cols-2 gap-3">
+                    {advisory.treatment.immediate.map((i, idx) => (
+                      <div key={idx} className="bg-background rounded-lg p-3 border border-destructive/20">
+                        <p className="font-semibold text-sm mb-1">{i.action}</p>
+                        {i.product && <p className="text-xs text-muted-foreground">Product: <span className="text-foreground">{i.product}</span></p>}
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
+              {advisory.treatment?.organic?.length > 0 && (
+                <Card className="border-primary/30">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-primary flex items-center gap-2 text-base"><Sprout className="h-4 w-4"/> Organic Solutions</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ul className="space-y-2">
+                      {advisory.treatment.organic.map((o, idx) => (
+                        <li key={idx} className="flex items-start gap-2 text-sm text-muted-foreground">
+                          <span className="text-primary mt-1">•</span> {o}
+                        </li>
+                      ))}
+                    </ul>
+                  </CardContent>
+                </Card>
+              )}
+
+              {advisory.treatment?.chemical?.length > 0 && (
+                <Card className="border-orange-500/30">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-orange-500 flex items-center gap-2 text-base"><Beaker className="h-4 w-4"/> Chemical Treatments</CardTitle>
+                  </CardHeader>
+                  <CardContent className="grid sm:grid-cols-2 gap-3">
+                    {advisory.treatment.chemical.map((c, idx) => (
+                      <div key={idx} className="bg-background rounded-lg p-3 border border-orange-500/20">
+                        <p className="font-semibold text-sm mb-1">{c.name}</p>
+                        {c.activeIngredient && <p className="text-xs text-muted-foreground">Active: {c.activeIngredient}</p>}
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
+              {report.status !== 'resolved' && (
+                <Button onClick={handleResolve} className="w-full sm:w-auto mt-4 gap-2">
+                  <CheckCircle2 className="h-4 w-4" /> Mark as Resolved
+                </Button>
+              )}
+            </div>
+          )}
+
         </div>
       </div>
     </div>

@@ -2,6 +2,10 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '../components/ui/card';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Leaf, Loader2 } from 'lucide-react';
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -24,62 +28,56 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#060e08] flex items-center justify-center p-4 font-body">
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500;600&display=swap');`}</style>
-      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-forest-600/10 rounded-full blur-[100px] pointer-events-none" />
-
-      <div className="w-full max-w-md relative">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-muted/40">
+      <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <Link to="/" className="inline-flex items-center gap-2 mb-6">
-            <span className="text-3xl">🌿</span>
-            <span className="font-display font-bold text-white text-2xl">CropGuard</span>
+          <Link to="/" className="inline-flex items-center gap-2 mb-4">
+            <Leaf className="h-8 w-8 text-primary" />
+            <span className="font-bold text-3xl tracking-tight">CropAI</span>
           </Link>
-          <h2 className="font-display font-bold text-white text-3xl">Welcome back</h2>
-          <p className="text-forest-400 mt-2">Sign in to your farm dashboard</p>
+          <h2 className="text-2xl font-bold tracking-tight">Welcome back</h2>
+          <p className="text-muted-foreground mt-1">Sign in to your dashboard</p>
         </div>
 
-        <div className="bg-forest-950/80 border border-forest-800/50 rounded-2xl p-8 backdrop-blur-sm">
-          <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-            <div>
-              <label className="block text-forest-300 text-sm font-medium mb-2">Email Address</label>
-              <input
-                type="email"
-                required
-                value={form.email}
-                onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                className="w-full bg-forest-900/50 border border-forest-700/50 rounded-xl px-4 py-3 text-white placeholder-forest-500 focus:outline-none focus:border-forest-500 transition-colors"
-                placeholder="farmer@example.com"
-              />
-            </div>
-            <div>
-              <label className="block text-forest-300 text-sm font-medium mb-2">Password</label>
-              <input
-                type="password"
-                required
-                value={form.password}
-                onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                className="w-full bg-forest-900/50 border border-forest-700/50 rounded-xl px-4 py-3 text-white placeholder-forest-500 focus:outline-none focus:border-forest-500 transition-colors"
-                placeholder="••••••••"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-gradient-to-r from-forest-600 to-forest-500 hover:from-forest-500 hover:to-forest-400 text-white font-semibold py-3 rounded-xl transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed mt-2"
-            >
-              {loading ? 'Signing in...' : 'Sign In →'}
-            </button>
-          </form>
+        <Card>
+          <CardContent className="pt-6">
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Email Address</label>
+                <Input
+                  type="email"
+                  required
+                  value={form.email}
+                  onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                  placeholder="farmer@example.com"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Password</label>
+                <Input
+                  type="password"
+                  required
+                  value={form.password}
+                  onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                  placeholder="••••••••"
+                />
+              </div>
+              <Button type="submit" disabled={loading} className="w-full mt-2">
+                {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {loading ? 'Signing in...' : 'Sign In'}
+              </Button>
+            </form>
 
-          {/* Demo credentials */}
-          <div className="mt-4 p-3 bg-earth-900/30 border border-earth-700/30 rounded-lg text-center">
-            <p className="text-earth-400 text-xs">Demo: demo@cropguard.ai / password123</p>
-          </div>
-        </div>
-
-        <p className="text-center text-forest-400 mt-6">
-          New to CropGuard? <Link to="/register" className="text-forest-300 hover:text-white transition-colors font-medium">Create account</Link>
-        </p>
+            <div className="mt-6 p-3 bg-secondary/50 rounded-lg text-center border border-border">
+              <p className="text-muted-foreground text-xs">Demo: demo@cropguard.ai / password123</p>
+            </div>
+          </CardContent>
+          <CardFooter className="flex justify-center border-t p-6">
+            <p className="text-sm text-muted-foreground">
+              New to CropAI? <Link to="/register" className="text-primary hover:underline font-medium">Create account</Link>
+            </p>
+          </CardFooter>
+        </Card>
       </div>
     </div>
   );

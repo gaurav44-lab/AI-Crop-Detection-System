@@ -39,19 +39,25 @@ class AIService {
 
       const parts = [{ text: promptText }];
 
-      // Attach local images by converting to base64 inline data
+      // Attach remote Cloudinary images by converting them to base64 inline data
       if (images && images.length > 0) {
         for (const img of images) {
-          // img.path is roughly /uploads/user_id/filename.ext
-          const relativeImagePath = img.path.replace(/^\//, '');
-          const absolutePath = path.join(__dirname, '..', relativeImagePath);
-          if (fs.existsSync(absolutePath)) {
+          try {
+            // Fetch the image from the secure Cloudinary URL
+            const response = await fetch(img.path);
+            if (!response.ok) throw new Error(`Failed to fetch image status: ${response.status}`);
+            
+            const arrayBuffer = await response.arrayBuffer();
+            const base64Data = Buffer.from(arrayBuffer).toString('base64');
+            
             parts.push({
               inlineData: {
-                data: fs.readFileSync(absolutePath).toString('base64'),
+                data: base64Data,
                 mimeType: img.mimetype || 'image/jpeg'
               }
             });
+          } catch (err) {
+            console.error(`Failed to load image for AI analysis from ${img.path}:`, err.message);
           }
         }
       }
